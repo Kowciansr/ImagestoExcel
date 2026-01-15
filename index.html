@@ -1,142 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>In-Cell Photo Excel Grid</title>
-    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
-    <style>
-        :root { --excel-green: #217346; }
-        body { font-family: 'Segoe UI', sans-serif; background: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 450px; text-align: center; }
-        .upload-area { border: 2px dashed #ccc; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        button { background: var(--excel-green); color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; }
-        button:disabled { background: #a0a0a0; }
-        #status-log { margin-top: 20px; text-align: left; font-size: 0.8rem; background: #1e1e1e; color: #00ff00; padding: 12px; border-radius: 6px; height: 100px; overflow-y: auto; font-family: monospace; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>True In-Cell 4:3 Image Grid</title>
+  <style>
+    :root { --excel-green: #217346; }
+    body {
+      font-family: 'Segoe UI', sans-serif; background: #f3f4f6;
+      display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+    }
+    .container {
+      background: white; padding: 2.5rem; border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 520px; text-align: center;
+    }
+    .upload-area { border: 2px dashed #ccc; padding: 20px; border-radius: 8px; margin: 20px 0; }
+    button {
+      background: var(--excel-green); color: white; border: none; padding: 12px 24px;
+      border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; transition: 0.3s;
+    }
+    button:disabled { background: #a0a0a0; cursor: not-allowed; }
+    #status-log {
+      margin-top: 20px; text-align: left; font-size: 0.8rem; background: #1e1e1e; color: #00ff00;
+      padding: 12px; border-radius: 6px; height: 160px; overflow-y: auto; font-family: monospace;
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h2 style="color: var(--excel-green);">In-Cell 4:3 Image Grid</h2>
+    <p>Using <b>embed_image</b> for true "Place in Cell" functionality.</p>
 
-<div class="container">
-    <h2 style="color: var(--excel-green);">In-Cell Photo Grid</h2>
-    <p>Embeds images <b>INSIDE</b> Excel cells (Locked to Grid).</p>
-    
     <div class="upload-area">
-        <input type="file" id="fileInput" multiple accept="image/png, image/jpeg">
+      <input type="file" id="fileInput" multiple accept="image/png, image/jpeg"/>
     </div>
 
-    <button id="convertBtn" disabled>Loading Engine...</button>
+    <button id="convertBtn" disabled>Loading Python...</button>
     <div id="status-log">System: Initializing...</div>
-</div>
+  </div>
 
-<script>
+  <script type="module">
+    import { loadPyodide } from "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.mjs";
+
     let pyodide;
 
     function log(msg) {
-        const logger = document.getElementById('status-log');
-        logger.innerHTML += `<div>> ${msg}</div>`;
-        logger.scrollTop = logger.scrollHeight;
+      const logger = document.getElementById('status-log');
+      logger.innerHTML += `<div>> ${msg}</div>`;
+      logger.scrollTop = logger.scrollHeight;
     }
 
-    async function initPyodide() {
-        try {
-            pyodide = await loadPyodide();
-            await pyodide.loadPackage("micropip");
-            const micropip = pyodide.pyimport("micropip");
-            await micropip.install(["xlsxwriter", "Pillow"]);
-            document.getElementById('convertBtn').disabled = false;
-            document.getElementById('convertBtn').innerText = "Generate In-Cell Excel";
-            log("System Ready.");
-        } catch (err) { log("Error: " + err.message); }
+    async function initPy() {
+      try {
+        pyodide = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/",
+        });
+        await pyodide.loadPackage("micropip");
+        const micropip = pyodide.pyimport("micropip");
+        log("Installing XlsxWriter (Latest) & Pillow...");
+        await micropip.install("xlsxwriter>=3.1.2");
+        await micropip.install("Pillow");
+        document.getElementById('convertBtn').disabled = false;
+        document.getElementById('convertBtn').innerText = "Generate True In-Cell Excel";
+        log("System Ready.");
+      } catch (err) {
+        log("Error during init: " + err.message);
+      }
     }
 
-    initPyodide();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initPy);
+    } else {
+      initPy();
+    }
 
     document.getElementById('convertBtn').addEventListener('click', async () => {
-        const files = document.getElementById('fileInput').files;
-        if (files.length === 0) return alert("Select images first.");
+      const files = document.getElementById('fileInput').files;
+      if (files.length === 0) return alert("Please select images first.");
 
-        document.getElementById('convertBtn').disabled = true;
-        log(`Processing ${files.length} images...`);
+      document.getElementById('convertBtn').disabled = true;
+      log(`Processing ${files.length} images...`);
 
-        const fileNames = [];
-        for (let file of files) {
-            const buffer = await file.arrayBuffer();
-            const safeName = `img_${fileNames.length}`;
-            pyodide.FS.writeFile(safeName, new Uint8Array(buffer));
-            fileNames.push(safeName);
-        }
+      const fileNames = [];
+      const displayNames = [];
 
-        const pythonCode = `
+      for (let i = 0; i < files.length; i++) {
+        const buffer = await files[i].arrayBuffer();
+        const safeName = `img_${i}.png`;
+        pyodide.FS.writeFile(safeName, new Uint8Array(buffer));
+        fileNames.push(safeName);
+        displayNames.push(files[i].name);
+      }
+
+      const pythonCode = `
+import io
+from PIL import Image, ImageOps
 import xlsxwriter
-from PIL import Image
 
-file_names = ${JSON.stringify(fileNames)}
-output_file = 'in_cell_grid.xlsx'
+file_names    = ${JSON.stringify(fileNames)}
+display_names = ${JSON.stringify(displayNames)}
+output_file   = 'true_in_cell_report.xlsx'
+
+# --- Cell sizing targets ---
+target_w_px = 320
+target_h_px = 240
+
+def pixels_to_col_width(px): return round(px / 7.0 - 0.75, 2)
+def pixels_to_points(px):    return round(px * 3.0 / 4.0, 2)
+
+col_w_chars = pixels_to_col_width(target_w_px)
+row_h_pts   = pixels_to_points(target_h_px)
 
 workbook = xlsxwriter.Workbook(output_file)
-worksheet = workbook.add_worksheet()
+ws = workbook.add_worksheet("Images")
 
-# Formatting columns to fit images
-worksheet.set_column('A:A', 20) 
-worksheet.set_column('B:B', 40) 
+ws.set_column('A:A', 35)
+ws.set_column('B:B', col_w_chars)
 
-# Standard Photo Dimensions
-TARGET_WIDTH = 240
-TARGET_HEIGHT = 180 
+hdr_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9EAD3', 'border': 1})
+ws.write(0, 0, "Image Name", hdr_fmt)
+ws.write(0, 1, "Image (In-Cell)", hdr_fmt)
 
-for i, name in enumerate(file_names):
-    row = i + 1
-    worksheet.set_row(row, 140) # Set cell height
-    worksheet.write(row, 0, f"Record {i+1}")
+for i, (path, disp_name) in enumerate(zip(file_names, display_names), start=1):
+    ws.set_row(i, row_h_pts)
+    ws.write(i, 0, disp_name)
 
     try:
-        with Image.open(name) as img:
-            # Crop to 4:3 ratio to keep cells even
-            w, h = img.size
-            target_aspect = 4 / 3
-            current_aspect = w / h
-            if current_aspect > target_aspect:
-                new_width = h * target_aspect
-                offset = (w - new_width) / 2
-                img = img.crop((offset, 0, w - offset, h))
+        with Image.open(path) as img:
+            img = ImageOps.exif_transpose(img)
+
+            # Crop to 4:3
+            img_ratio = img.width / img.height
+            target_ratio = 4/3
+            if img_ratio > target_ratio:
+                new_w = int(img.height * target_ratio)
+                left = (img.width - new_w) // 2
+                img = img.crop((left, 0, left + new_w, img.height))
             else:
-                new_height = w / target_aspect
-                offset = (h - new_height) / 2
-                img = img.crop((0, offset, w, h - offset))
+                new_h = int(img.width / target_ratio)
+                top = (img.height - new_h) // 2
+                img = img.crop((0, top, img.width, top + new_h))
 
-            img_resized = img.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.LANCZOS)
-            temp_name = f"final_{i}.png"
-            img_resized.save(temp_name)
+            # Final Resize
+            img = img.resize((target_w_px, target_h_px), Image.Resampling.LANCZOS)
 
-            # POSITIONING: object_position 1 = Move and size with cells
-            # This locks the image INSIDE the cell boundaries.
-            worksheet.insert_image(row, 1, temp_name, {
-                'object_position': 1,
-                'x_scale': 1,
-                'y_scale': 1,
-                'x_offset': 5,
-                'y_offset': 5
-            })
+            bio = io.BytesIO()
+            img.save(bio, format='PNG')
+            bio.seek(0)
+
+            # --- THE KEY CHANGE: embed_image ---
+            # This places the image INSIDE the cell as a value
+            ws.embed_image(i, 1, path, {'image_data': bio})
+
     except Exception as e:
-        print(f"Error: {e}")
+        ws.write(i, 1, f"Error: {e}")
 
 workbook.close()
 `;
 
-        try {
-            await pyodide.runPythonAsync(pythonCode);
-            const data = pyodide.FS.readFile('in_cell_grid.xlsx');
-            const blob = new Blob([data], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = "In_Cell_Photo_Report.xlsx";
-            link.click();
-            log("Success! File Downloaded.");
-        } catch (err) { log("Error: " + err.message); }
-        finally { document.getElementById('convertBtn').disabled = false; }
+      try {
+        await pyodide.runPythonAsync(pythonCode);
+        const data = pyodide.FS.readFile('true_in_cell_report.xlsx');
+        const blob = new Blob([data], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = "True_InCell_Images.xlsx";
+        link.click();
+        log("Success! Open the file in Excel 365/2021+ to see the feature.");
+      } catch (err) {
+        log("Error: " + err.message);
+      } finally {
+        document.getElementById('convertBtn').disabled = false;
+      }
     });
-</script>
+  </script>
 </body>
 </html>
