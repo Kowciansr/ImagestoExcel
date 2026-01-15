@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Standard Photo Excel Grid</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        :root { --excel-green: #217346; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); width: 450px; text-align: center; }
+        .upload-area { border: 2px dashed #ccc; padding: 20px; border-radius: 8px; margin: 20px 0; }
+        button { background: var(--excel-green); color: white; border: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; }
+        button:disabled { background: #a0a0a0; }
+        #status-log { margin-top: 20px; text-align: left; font-size: 0.8rem; background: #1e1e1e; color: #00ff00; padding: 12px; border-radius: 6px; height: 100px; overflow-y: auto; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2 style="color: var(--excel-green);">Photo Grid Generator</h2>
+    <p>Converts images to <b>Standard 4:3 Photo Ratio</b> in Excel.</p>
+    
+    <div class="upload-area">
+        <input type="file" id="fileInput" multiple accept="image/png, image/jpeg">
+    </div>
+
+    <button id="convertBtn" disabled>Loading Engine...</button>
+    <div id="status-log">System: Initializing...</div>
+</div>
+
+<script>
+    let pyodide;
+
+    function log(msg) {
+        const logger = document.getElementById('status-log');
+        logger.innerHTML += `<div>> ${msg}</div>`;
+        logger.scrollTop = logger.scrollHeight;
+    }
+
+    async function initPyodide() {
+        try {
+            pyodide = await loadPyodide();
+            await pyodide.loadPackage("micropip");
+            const micropip = pyodide.pyimport("micropip");
+            await micropip.install(["xlsxwriter", "Pillow"]);
+            document.getElementById('convertBtn').disabled = false;
+            document.getElementById('convertBtn').innerText = "Generate Photo Excel";
+            log("System Ready.");
+        } catch (err) { log("Error: " + err.message); }
+    }
+
+    initPyodide();
+
+    document.getElementById('convertBtn').addEventListener('click', async () => {
+        const files = document.getElementById('fileInput').files;
+        if (files.length === 0) return alert("Select images first.");
+
+        document.getElementById('convertBtn').disabled = true;
+        log(`Processing ${files.length} images...`);
+
+        const fileNames = [];
+        for (let file of files) {
+            const buffer = await file.arrayBuffer();
+            const safeName = `img_${fileNames.length}`;
+            pyodide.FS.writeFile(safeName, new Uint8Array(buffer));
+            fileNames.push(safeName);
+        }
+
+        const pythonCode = `
+import xlsxwriter
+from PIL import Image
+
+file_names = ${JSON.stringify(fileNames)}
+output_file = 'photo_grid.xlsx'
+
+workbook = xlsxwriter.Workbook(output_file)
+worksheet = workbook.add_worksheet()
+
+# Standard Photo Dimensions (4:3 Ratio)
+# Excel widths are approx 7 pixels per unit. Column width 40 = ~280px.
+worksheet.set_column('A:A', 20) 
+worksheet.set_column('B:B', 40) 
+
+TARGET_WIDTH = 240
+TARGET_HEIGHT = 180 # 4:3 Ratio (240 / 180 = 1.33)
+
+for i, name in enumerate(file_names):
+    row = i + 1
+    worksheet.set_row(row, 150) # Height in points (~200 pixels)
+    worksheet.write(row, 0, f"Photo {i+1}")
+
+    try:
+        with Image.open(name) as img:
+            w, h = img.size
+            # Calculate 4:3 cropping
+            target_aspect = 4 / 3
+            current_aspect = w / h
+
+            if current_aspect > target_aspect:
+                # Image is too wide
+                new_width = h * target_aspect
+                offset = (w - new_width) / 2
+                img = img.crop((offset, 0, w - offset, h))
+            else:
+                # Image is too tall
+                new_height = w / target_aspect
+                offset = (h - new_height) / 2
+                img = img.crop((0, offset, w, h - offset))
+
+            img_resized = img.resize((TARGET_WIDTH, TARGET_HEIGHT), Image.LANCZOS)
+            temp_name = f"final_{i}.png"
+            img_resized.save(temp_name)
+
+            worksheet.insert_image(row, 1, temp_name, {
+                'object_position': 1,
+                'x_offset': 10,
+                'y_offset': 10
+            })
+    except Exception as e:
+        print(f"Error: {e}")
+
+workbook.close()
+`;
+
+        try {
+            await pyodide.runPythonAsync(pythonCode);
+            const data = pyodide.FS.readFile('photo_grid.xlsx');
+            const blob = new Blob([data], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = "Standard_Photo_Grid.xlsx";
+            link.click();
+            log("Success! Check Downloads.");
+        } catch (err) { log("Error: " + err.message); }
+        finally { document.getElementById('convertBtn').disabled = false; }
+    });
+</script>
+</body>
+</html>
