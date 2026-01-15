@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Standard Photo Excel Grid</title>
+    <title>In-Cell Photo Excel Grid</title>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
     <style>
         :root { --excel-green: #217346; }
@@ -18,8 +18,8 @@
 <body>
 
 <div class="container">
-    <h2 style="color: var(--excel-green);">Photo Grid Generator</h2>
-    <p>Converts images to <b>Standard 4:3 Photo Ratio</b> in Excel.</p>
+    <h2 style="color: var(--excel-green);">In-Cell Photo Grid</h2>
+    <p>Embeds images <b>INSIDE</b> Excel cells (Locked to Grid).</p>
     
     <div class="upload-area">
         <input type="file" id="fileInput" multiple accept="image/png, image/jpeg">
@@ -45,7 +45,7 @@
             const micropip = pyodide.pyimport("micropip");
             await micropip.install(["xlsxwriter", "Pillow"]);
             document.getElementById('convertBtn').disabled = false;
-            document.getElementById('convertBtn').innerText = "Generate Photo Excel";
+            document.getElementById('convertBtn').innerText = "Generate In-Cell Excel";
             log("System Ready.");
         } catch (err) { log("Error: " + err.message); }
     }
@@ -72,38 +72,35 @@ import xlsxwriter
 from PIL import Image
 
 file_names = ${JSON.stringify(fileNames)}
-output_file = 'photo_grid.xlsx'
+output_file = 'in_cell_grid.xlsx'
 
 workbook = xlsxwriter.Workbook(output_file)
 worksheet = workbook.add_worksheet()
 
-# Standard Photo Dimensions (4:3 Ratio)
-# Excel widths are approx 7 pixels per unit. Column width 40 = ~280px.
+# Formatting columns to fit images
 worksheet.set_column('A:A', 20) 
 worksheet.set_column('B:B', 40) 
 
+# Standard Photo Dimensions
 TARGET_WIDTH = 240
-TARGET_HEIGHT = 180 # 4:3 Ratio (240 / 180 = 1.33)
+TARGET_HEIGHT = 180 
 
 for i, name in enumerate(file_names):
     row = i + 1
-    worksheet.set_row(row, 150) # Height in points (~200 pixels)
-    worksheet.write(row, 0, f"Photo {i+1}")
+    worksheet.set_row(row, 140) # Set cell height
+    worksheet.write(row, 0, f"Record {i+1}")
 
     try:
         with Image.open(name) as img:
+            # Crop to 4:3 ratio to keep cells even
             w, h = img.size
-            # Calculate 4:3 cropping
             target_aspect = 4 / 3
             current_aspect = w / h
-
             if current_aspect > target_aspect:
-                # Image is too wide
                 new_width = h * target_aspect
                 offset = (w - new_width) / 2
                 img = img.crop((offset, 0, w - offset, h))
             else:
-                # Image is too tall
                 new_height = w / target_aspect
                 offset = (h - new_height) / 2
                 img = img.crop((0, offset, w, h - offset))
@@ -112,10 +109,14 @@ for i, name in enumerate(file_names):
             temp_name = f"final_{i}.png"
             img_resized.save(temp_name)
 
+            # POSITIONING: object_position 1 = Move and size with cells
+            # This locks the image INSIDE the cell boundaries.
             worksheet.insert_image(row, 1, temp_name, {
                 'object_position': 1,
-                'x_offset': 10,
-                'y_offset': 10
+                'x_scale': 1,
+                'y_scale': 1,
+                'x_offset': 5,
+                'y_offset': 5
             })
     except Exception as e:
         print(f"Error: {e}")
@@ -125,14 +126,14 @@ workbook.close()
 
         try {
             await pyodide.runPythonAsync(pythonCode);
-            const data = pyodide.FS.readFile('photo_grid.xlsx');
+            const data = pyodide.FS.readFile('in_cell_grid.xlsx');
             const blob = new Blob([data], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = "Standard_Photo_Grid.xlsx";
+            link.download = "In_Cell_Photo_Report.xlsx";
             link.click();
-            log("Success! Check Downloads.");
+            log("Success! File Downloaded.");
         } catch (err) { log("Error: " + err.message); }
         finally { document.getElementById('convertBtn').disabled = false; }
     });
